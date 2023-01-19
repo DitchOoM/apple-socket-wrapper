@@ -2,8 +2,8 @@
 //  AppDelegate.swift
 //  SocketWrapper
 //
-//  Created by Rahul Behera on 01/18/2023.
-//  Copyright (c) 2023 Rahul Behera. All rights reserved.
+//  Created by Rahul Behera on 12/30/2022.
+//  Copyright (c) 2022 Rahul Behera. All rights reserved.
 //
 
 import UIKit
@@ -14,7 +14,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
 
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplicationLaunchOptionsKey: Any]?) -> Bool {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
         return true
     }
