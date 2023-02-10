@@ -118,13 +118,11 @@ public class ServerSocketWrapper: SocketWrapper {
 @objc
 public class ServerSocketListenerWrapper: NSObject {
 
-  var listener: NWListener?
+  let listener: NWListener
+  private var cb: ((NWConnection) -> Void)? = nil
+  private var closeCb: [(() -> Void)] = []
 
-  @objc public func start(
-    port: Int, host: String?, backlog: Int,
-    acceptedClient: @escaping (ServerSocketWrapper) -> Void,
-    completionHandler: @escaping (ServerSocketListenerWrapper, String?, Bool, Bool, Bool) -> Void
-  ) {
+  @objc public init(port: Int, host: String?, backlog: Int) {
     let nwEndpointPort: NWEndpoint.Port
     if port < 0 {
       nwEndpointPort = .any
@@ -132,6 +130,39 @@ public class ServerSocketListenerWrapper: NSObject {
       nwEndpointPort = NWEndpoint.Port(rawValue: UInt16(port))!
     }
     let listener = try! NWListener(using: .tcp, on: nwEndpointPort)
+    if backlog < 1 {
+      listener.newConnectionLimit = NWListener.InfiniteConnectionLimit
+    } else {
+      listener.newConnectionLimit = Int(backlog)
+    }
+    self.listener = listener
+    super.init()
+    listener.newConnectionHandler = { connection in
+      guard let cb = self.cb else { return }
+      cb(connection)
+    }
+  }
+
+  @objc public func assignCloseCallback(cb: @escaping () -> Void) {
+    self.closeCb.append(cb)
+  }
+
+  @objc public func assignAcceptedCallbackListener(
+    acceptedClient: @escaping (ServerSocketWrapper) -> Void
+  ) {
+    self.cb = { connection in
+      let _ = ServerSocketWrapper(connection: connection) {
+        (serverSocketWrapper, errorString, isPosixError, isDnsError, isTlsError) in
+        if errorString == nil && !isPosixError && !isDnsError && !isTlsError {
+          acceptedClient(serverSocketWrapper)
+        }
+      }
+    }
+  }
+
+  @objc public func start(
+    completionHandler: @escaping (ServerSocketListenerWrapper, String?, Bool, Bool, Bool) -> Void
+  ) {
     listener.stateUpdateHandler = { state in
       switch state {
       case .setup:
@@ -143,41 +174,40 @@ public class ServerSocketListenerWrapper: NSObject {
       case .failed(let error):
         self.notifyCompletion(error: error, completionHandler: completionHandler)
       case .cancelled:
-        ()
+        self.cb = nil
+        for closeCallback in self.closeCb {
+          closeCallback()
+        }
+        self.closeCb = []
       @unknown default:
         ()
       }
     }
-    if backlog < 1 {
-      listener.newConnectionLimit = NWListener.InfiniteConnectionLimit
-    } else {
-      listener.newConnectionLimit = backlog
-    }
-    listener.newConnectionHandler = { connection in
-      let _ = ServerSocketWrapper(connection: connection) {
-        (serverSocketWrapper, errorString, isPosixError, isDnsError, isTlsError) in
-        if errorString == nil && !isPosixError && !isDnsError && !isTlsError {
-          acceptedClient(serverSocketWrapper)
-        }
-      }
-    }
-    self.listener = listener
     listener.start(queue: .global())
+
   }
 
   @objc public func isOpen() -> Bool {
-    return listener?.state == .ready
+    return listener.state == .ready
   }
 
   @objc public func port() -> Int {
-    guard let listenerPort = listener?.port else {
+    if !isOpen() {
+      return -1
+    }
+    guard let listenerPort = listener.port else {
       return -1
     }
     return Int(listenerPort.rawValue)
   }
 
-  @objc public func stopListeningForInboundConnections() {
-    listener?.cancel()
+  @objc public func stopListeningForInboundConnections(cb: @escaping () -> Void) {
+    if listener.state == .cancelled {
+      cb()
+    } else {
+      listener.cancel()
+      self.closeCb.append(cb)
+    }
   }
 
   func notifyCompletion(
