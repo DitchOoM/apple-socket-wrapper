@@ -257,7 +257,7 @@ public class SocketWrapper: NSObject {
     }
   }
   @objc public func readData(completion: @escaping (Data, String?, Bool) -> Void) {
-    connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) {
+    connection.receive(minimumIncompleteLength: 0, maximumLength: 65536) {
       (data, _, isComplete, error) in
       guard let content = data else {
         completion(Data(count: 0), error?.debugDescription, isComplete)
