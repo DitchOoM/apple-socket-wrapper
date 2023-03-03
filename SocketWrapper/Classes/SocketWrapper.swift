@@ -14,8 +14,7 @@ public class ClientSocketWrapper: SocketWrapper {
   let port: Network.NWEndpoint.Port
 
   @objc public init(
-    host: String, port: UInt16, timeoutSeconds: Int, tls: Bool,
-    completion: @escaping (ClientSocketWrapper, String?, Bool, Bool, Bool) -> Void
+    host: String, port: UInt16, timeoutSeconds: Int, tls: Bool
   ) {
     self.host = NWEndpoint.Host(host)
     self.port = NWEndpoint.Port(rawValue: port)!
@@ -37,40 +36,54 @@ public class ClientSocketWrapper: SocketWrapper {
       nwConnection = NWConnection(host: self.host, port: self.port, using: params)
     }
     super.init(connection: nwConnection)
+
+  }
+
+  @objc public func setStateUpdateHandler(
+    handler: @escaping (ClientSocketWrapper, String, String?, Bool, Bool, Bool) -> Void
+  ) {
     connection.stateUpdateHandler = { state in
       switch state {
       case .ready:
-        completion(self, nil, false, false, false)
+        handler(self, "\(state)", nil, false, false, false)
       case .failed(let error):
-        self.notifyCompletion(socketWrapper: self, error: error, completion: completion)
+        self.notifyError(socketWrapper: self, state: state, error: error, handler: handler)
       case .waiting(let error):
-        self.notifyCompletion(socketWrapper: self, error: error, completion: completion)
-      default:
-        ()
+        self.notifyError(socketWrapper: self, state: state, error: error, handler: handler)
+      case .setup:
+        handler(self, "\(state)", nil, false, false, false)
+      case .preparing:
+        handler(self, "\(state)", nil, false, false, false)
+      case .cancelled:
+        handler(self, "\(state)", nil, false, false, false)
+      @unknown default:
+        fatalError("Unknown NWError state \(state)")
       }
     }
-    connection.start(queue: DispatchQueue.global())
   }
 
+  @objc public func start() {
+    connection.start(queue: DispatchQueue.global())
+  }
+    
   @objc public func currentState() -> String {
     return "\(self.connection.state)"
   }
 
-  func notifyCompletion(
-    socketWrapper: ClientSocketWrapper, error: NWError,
-    completion: @escaping (ClientSocketWrapper, String?, Bool, Bool, Bool) -> Void
+  func notifyError(
+    socketWrapper: ClientSocketWrapper, state: NWConnection.State, error: NWError,
+    handler: @escaping (ClientSocketWrapper, String, String?, Bool, Bool, Bool) -> Void
   ) {
     switch error {
     case .posix(_):
-      completion(self, error.debugDescription, true, false, false)
+      handler(self, "\(state)", error.debugDescription, true, false, false)
     case .dns(_):
-      completion(self, error.debugDescription, false, true, false)
+      handler(self, "\(state)", error.debugDescription, false, true, false)
     case .tls(_):
-      completion(self, error.debugDescription, false, false, true)
+      handler(self, "\(state)", error.debugDescription, false, false, true)
     @unknown default:
       fatalError("Unknown NWError case \(error)")
     }
-    cancel()
   }
 }
 
