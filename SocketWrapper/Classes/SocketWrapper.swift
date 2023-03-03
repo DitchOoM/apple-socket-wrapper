@@ -65,7 +65,7 @@ public class ClientSocketWrapper: SocketWrapper {
   @objc public func start() {
     connection.start(queue: DispatchQueue.global())
   }
-    
+
   @objc public func currentState() -> String {
     return "\(self.connection.state)"
   }
